@@ -131,7 +131,7 @@ On each host, in order:
 
 ## Requirements
 
-Requires Conn3x v0.6.5 or later, systemd on each host, and outbound HTTPS to `pkg.jenkins.io`, `updates.jenkins.io`, GitHub and your distribution's mirrors. 2 GB of memory is comfortable for a small controller; see [Memory](#memory). Jenkins is a Java web app, so the same packages run on amd64 and arm64, but only amd64 was tested.
+Requires Conn3x v0.6.9 or later, systemd on each host, and outbound HTTPS to `pkg.jenkins.io`, `updates.jenkins.io`, GitHub and your distribution's mirrors. 2 GB of memory is comfortable for a small controller; see [Memory](#memory). Jenkins is a Java web app, so the same packages run on amd64 and arm64, but only amd64 was tested.
 
 When the key in `files/jenkins.asc` nears its expiry on 21 December 2028, Jenkins will publish a new one at `https://pkg.jenkins.io/debian-stable/`. A release of this circuit with the new key then replaces it on the next apply.
 
