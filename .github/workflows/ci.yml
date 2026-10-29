@@ -37,7 +37,6 @@ jobs:
         run: conn3x init -backend=false && conn3x validate
 
   e2e:
-  e2e:
     needs: validate
     runs-on: ubuntu-24.04
     timeout-minutes: 30
