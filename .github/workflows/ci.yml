@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Conn3x
+        env: &gh
+          GH_TOKEN: ${{ github.token }}
+        run: &install |
+          tag=$(gh release view -R conn3xorg/conn3x --json tagName -q .tagName)
+          file="conn3x_${tag#v}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/$file"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/checksums.txt"
+          grep " $file\$" checksums.txt | sha256sum -c -
+          mkdir -p bin && tar -xzf "$file" -C bin conn3x
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: conn3x version
+      - run: conn3x fmt -check -recursive
+      - name: Validate
+        run: conn3x init -backend=false && conn3x validate
+      - name: Validate the example
+        working-directory: examples/local
+        run: conn3x init -backend=false && conn3x validate
+
+  e2e:
+  e2e:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky10, fedora45, ubuntu2404, debian13]
+    name: e2e (${{ matrix.distro }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The test host images live in the Conn3x repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: conn3xorg/conn3x
+          ref: main
+          path: conn3x
+          persist-credentials: false
+          sparse-checkout: test/images
+      - name: Install Conn3x
+        env: *gh
+        run: *install
+      - name: Start the ${{ matrix.distro }} host
+        working-directory: examples/local
+        env:
+          CONTAINERFILE: ${{ github.workspace }}/conn3x/test/images/${{ matrix.distro }}/Containerfile
+        run: ./up.sh
+      - name: Apply, then plan again with no changes
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-1
+        run: |
+          conn3x init
+          conn3x apply -auto-approve
+          conn3x plan -detailed-exitcode
+      # Jenkins answers /login, turns anonymous users and a wrong password
+      # away, and lets admin in with a crumb, which needs the session cookie
+      # it came with. The listed plugin is installed and active, and the
+      # casc settings took. Then the same again after a restart.
+      - name: Log in with a crumb, check the plugin, restart and check again
+        run: |
+          cat > check.sh <<'EOF'
+          set -eu
+          u=http://127.0.0.1:8080
+          for _ in $(seq 300); do curl -sf -o /dev/null $u/login && break; sleep 1; done
+          curl -sSf -o /dev/null $u/login
+          [ "$(stat -c '%U:%G %a' /etc/jenkins/admin-password)" = "root:jenkins 640" ]
+          ! grep -q ci-only /etc/jenkins/casc.yaml
+          # Anonymous users get nothing but the login page.
+          [ "$(curl -s -o /dev/null -w '%{http_code}' $u/api/json)" = 403 ]
+          [ "$(curl -s -o /dev/null -w '%{http_code}' -u admin:wrong-password $u/whoAmI/api/json)" = 401 ]
+          jar=$(mktemp)
+          crumb=$(curl -sSf -c "$jar" -u admin:ci-only-admin-pass-1 "$u/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,\":\",//crumb)")
+          curl -sSf -b "$jar" -u admin:ci-only-admin-pass-1 -H "$crumb" -X POST $u/whoAmI/api/json | grep -q '"name":"admin"'
+          curl -sSfg -u admin:ci-only-admin-pass-1 "$u/pluginManager/api/json?depth=1&tree=plugins[shortName,version,active]" | grep -q '"active":true,"shortName":"timestamper","version":"1.30"'
+          curl -sSf -u admin:ci-only-admin-pass-1 $u/api/json | grep -q '"numExecutors":0'
+          tr '\0' ' ' < /proc/$(systemctl show -p MainPID --value jenkins)/cmdline | grep -q -- '--httpListenAddress=127.0.0.1 '
+          EOF
+          podman exec -i circuit-jenkins sh < check.sh
+          podman exec circuit-jenkins systemctl restart jenkins
+          podman exec -i circuit-jenkins sh < check.sh
+      - name: Plan again after the restart
+        working-directory: examples/local
+        env:
+          TF_VAR_admin_password: ci-only-admin-pass-1
+        run: conn3x plan -detailed-exitcode
+      - name: Clean up
+        if: always()
+        working-directory: examples/local
+        run: ./down.sh
