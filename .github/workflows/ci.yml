@@ -85,7 +85,7 @@ jobs:
           for _ in $(seq 300); do curl -sf -o /dev/null $u/login && break; sleep 1; done
           curl -sSf -o /dev/null $u/login
           [ "$(stat -c '%U:%G %a' /etc/jenkins/admin-password)" = "root:jenkins 640" ]
-          ! grep -q ci-only /etc/jenkins/casc.yaml
+          if grep -q ci-only /etc/jenkins/casc.yaml; then echo "the password is in casc.yaml" >&2; exit 1; fi
           # Anonymous users get nothing but the login page.
           [ "$(curl -s -o /dev/null -w '%{http_code}' $u/api/json)" = 403 ]
           [ "$(curl -s -o /dev/null -w '%{http_code}' -u admin:wrong-password $u/whoAmI/api/json)" = 401 ]
