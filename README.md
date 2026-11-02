@@ -1,5 +1,7 @@
 # circuit-jenkins
 
+[![Conn3x grade](https://conn3x.org/circuits/jenkins/grade.svg)](https://conn3x.org/circuits/jenkins/grade)
+
 A Conn3x circuit that runs a [Jenkins](https://www.jenkins.io) LTS controller on your own hosts, configured from code from its first start. No setup wizard, no unlock key copied out of a log, no clicking through "Install suggested plugins" and hoping you get the same set next time.
 
 It installs Jenkins from the project's own LTS repository at `pkg.jenkins.io`, on OpenJDK from your distribution, then sets it up the way the Jenkins docs describe for automated installs: plugins at the versions you list, installed by Jenkins' [plugin installation manager tool](https://github.com/jenkinsci/plugin-installation-manager-tool), and everything else through [Jenkins Configuration as Code](https://www.jenkins.io/projects/jcasc/) (JCasC). The circuit writes `/etc/jenkins/casc.yaml` with an admin user and whatever else you pass in `casc`. The admin's password sits in a file of its own, so it never shows up in the plan, the state or `casc.yaml`.
