@@ -235,10 +235,12 @@ circuit "jenkins" {
   # starting. JCasC applies casc.yaml and the password on each start.
   # Jenkins' unit allows five starts in five minutes, and an upgrade on the
   # Red Hat family restarts it once already, so a few applies in a row would
-  # hit the limit without reset-failed.
+  # hit the limit without reset_failed. service_action reloads systemd first
+  # when the drop-in changed.
   step "restart" {
-    command {
-      command = "systemctl daemon-reload && { systemctl reset-failed jenkins || true; } && systemctl restart jenkins"
+    service_action {
+      name         = "jenkins"
+      reset_failed = true
       triggers = {
         package  = conn3x_package.jenkins__package[each.key].revision
         dropin   = conn3x_file.jenkins__dropin[each.key].revision
@@ -264,7 +266,7 @@ circuit "jenkins" {
     command {
       command  = "for _ in $(seq 300); do curl -sf -o /dev/null ${local.url}/login && exit 0; sleep 1; done; echo 'Jenkins did not answer on ${local.url}/login in 5 minutes. See journalctl -u jenkins.' >&2; exit 1"
       unless   = "curl -sf -o /dev/null ${local.url}/login"
-      triggers = { restart = conn3x_command.jenkins__restart[each.key].revision }
+      triggers = { restart = conn3x_service_action.jenkins__restart[each.key].revision }
     }
   }
 }
